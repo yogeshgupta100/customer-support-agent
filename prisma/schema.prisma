@@ -1,0 +1,151 @@
+// Prisma schema for the AI Customer Support Agent (refund flow).
+// See docs/superpowers/specs for the architecture this schema implements.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrderStatus {
+  PLACED
+  DELIVERED
+  REFUNDED
+}
+
+enum RefundRequestStatus {
+  APPROVED
+  REJECTED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+enum AgentLogStatus {
+  STARTED
+  SUCCESS
+  FAILED
+  RETRY
+}
+
+enum AgentEventType {
+  REQUEST_RECEIVED
+  CUSTOMER_LOOKUP_STARTED
+  CUSTOMER_LOOKUP_SUCCESS
+  CUSTOMER_LOOKUP_FAILED
+  ORDER_LOOKUP_STARTED
+  ORDER_LOOKUP_SUCCESS
+  ORDER_LOOKUP_FAILED
+  POLICY_RETRIEVED
+  ELIGIBILITY_CHECK_STARTED
+  ELIGIBILITY_CHECK_RESULT
+  REFUND_PROCESS_STARTED
+  REFUND_PROCESSED
+  REFUND_DENIED
+  TOOL_FAILED
+  TOOL_RETRY
+  AGENT_COMPLETED
+  AGENT_ERROR
+}
+
+model Customer {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  phone          String?
+  createdAt      DateTime        @default(now())
+  orders         Order[]
+  conversations  Conversation[]
+  refundRequests RefundRequest[]
+}
+
+model Order {
+  id             String          @id @default(cuid())
+  customerId     String
+  customer       Customer        @relation(fields: [customerId], references: [id])
+  product        String
+  category       String
+  amountCents    Int
+  orderDate      DateTime
+  deliveryDate   DateTime?
+  paymentMethod  String
+  status         OrderStatus     @default(PLACED)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  refundRequests RefundRequest[]
+
+  @@index([customerId])
+}
+
+model RefundPolicy {
+  id                      String   @id @default(cuid())
+  version                 Int      @unique
+  isActive                Boolean  @default(true)
+  refundWindowDays        Int
+  nonRefundableCategories String[]
+  createdAt               DateTime @default(now())
+
+  @@index([isActive])
+}
+
+model RefundRequest {
+  id                   String              @id @default(cuid())
+  orderId              String
+  order                Order               @relation(fields: [orderId], references: [id])
+  customerId           String
+  customer             Customer            @relation(fields: [customerId], references: [id])
+  requestedAmountCents Int
+  refundAmountCents    Int
+  status               RefundRequestStatus
+  reasonCode           String
+  reason               String
+  policyVersion        Int
+  createdAt            DateTime            @default(now())
+
+  @@index([orderId])
+  @@index([customerId])
+}
+
+model Conversation {
+  id        String     @id @default(cuid())
+  customerId String
+  customer  Customer   @relation(fields: [customerId], references: [id])
+  createdAt DateTime   @default(now())
+  messages  Message[]
+  agentLogs AgentLog[]
+
+  @@index([customerId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  role           MessageRole
+  content        String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model AgentLog {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   Conversation   @relation(fields: [conversationId], references: [id])
+  timestamp      DateTime       @default(now())
+  eventType      AgentEventType
+  toolName       String?
+  status         AgentLogStatus
+  durationMs     Int?
+  retryAttempt   Int?
+  message        String?
+  metadata       Json?
+
+  @@index([conversationId])
+  @@index([timestamp])
+}
